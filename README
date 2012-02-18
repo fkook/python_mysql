@@ -1,1 +1,241 @@
-test
+tornado内部化包含了一个很简陋的database.py，最近在这个简单封装了MysqlDb的模块基础上增加增强的功能。
+对于Python这种动态语言来说我觉得ORM有点过度封装了，很多时候简单的数据操作不好用，太复杂的操作又不如直接写Sql，所以我放弃了Orm的方式，而是直接抽象了Sql的构建，现在的版本支持单表的sql查询，支持子查询，当然还有一些操作有所遗漏，我会继续向项目里追加。
+下载地址：http://files.cnblogs.com/Alexander-Lee/database.py.zip
+文档：
+Quick start
+假设建立表User
+create table `user`(
+`id` bigint(20) AUTO_INCREMENT,
+`name` varchar(20),
+`age` int(10),
+`birth` datetime,
+)
+创建连接:
+db=Connection(host=’127.0.0.1′,database=’testdb’,user=’root’,password=’xxxxx’)
+基本sql操作
+————————————————————————–
+查询多行
+(打印年龄大于18的用户名)
+for row in db.query(‘select * from user where age>%s’,18)
+print row.name
+查询单行
+(获取id=5的用户)
+user=db.query(‘select * from user where id=%s’,5)
+执行sql
+(更新生日大于等于8月23日的用户年龄+1)
+db.query(‘update user set age=age+1 where DATE_FORMAT(birth,’%%Y-%%m-%%d’)>=%s’,’2010-08-23′)
+插入记录
+db.insert(‘user’,name=’alex’,age=28,birth=’1981-08-31′)
+————————————————————————–
+无sql操作
+step 1 获取表对象
+t = db.user
+step 2 创建一个查询
+q=t(t.age>18) #用户年龄大于18岁的查询
+在这个查询的基础上可以进行下一步的操作，在这个筛选数据条件基础上对筛选出来的数据进行查询、更新、删除的操作
+查询条件可以多个组合，比如
+(t.age>18)&(t.age<30)|(t.id<500)
+组合出来的条件就是 age>18 and age<30 or id<500
+1，查询：
+for user in q.select.sort(birth="DESC")():
+print user.name
+根据birth字段取倒序，查询出所有的age>18的用户，打印出用户名
+查询分页 q.select.sort(birth=”DESC”)[2:10]() #按页大小20，取第二页的数据
+2，更新：
+(更新生日大于等于8月23日的用户年龄+1)
+t=db.user
+q=t(t.birth.DL(‘%%Y-%%m-%%d’,’2010-08-23′))
+q.update(t.age==t.age+1)
+3.删除
+在查询的基础上还可以对查询出的结果直接删除掉，比如
+q.delete()
+API reference
+Connection 对象
+构造器参数：
+host=’服务器ip/域名’,database=’Schame名’,user=’登录用户’,password=’密码’
+例子：db=Connection(host=’127.0.0.1′,database=’testdb’,user=’root’,password=’xxxxx’)
+方法(名称后带*的是tornado原有database.py中原有的方法，不带*的是扩展的方法)：
+名称：execute *
+参数:(sql,[params])
+返回值：执行sql影响的数据行数
+用途：执行不返回结果集的sql
+例子：db.execute(‘update testtable set col1=%s where id=%s’,'haha’,1)
+名称：executemany *
+参数:(sql,[params])
+返回值：执行sql影响的数据行数
+用途：同时执行多条不返回结果集的sql
+例子：db.execute(‘update testtable set col1=%s where id=%s;update user set age=1 where,id=1′,’haha’,1)
+名称:get *
+参数:(sql,[params])
+返回值：Row对象（见Row对象部分）
+用途：返回单行结果
+例子：user=db.get(‘select * from user where id=%s’,1)
+名称:query *
+参数：(sql,[params])
+返回值：Row对象列表
+用途：返回多行结果
+例子：users=db.query(‘select * from user where id<%s',5)
+名称：count
+参数：(sql,[params])
+返回值：count函数返回的结果
+用途：通过sql取记录数
+例子：c=db.count('select count(1) from user where age>%s’,18)
+名称：insert
+参数：(tablename,**dict(字段名=值))
+用途：插入记录
+例子：db.insert(‘user’,name=’alex’,age=28,)
+名称：commit *
+参数：无
+返回值：无
+用途：提交事务，由于不是auto commit的连接，所以对数据库的更新都需要手动commit才能生效
+例子：db.commit()
+名称：rollback *
+参数：无
+返回值：无
+用途：回滚事务
+例子：db.rollback()
+名称：fromQuery
+参数：Select对象
+返回值：TableQueryer对象
+用途：得到一个基于已有查询的TableQueryer对象
+例子：t2=db.fromQuery(q1)
+Row对象
+查询的结果集都由Row对象进行封装，Row对象是一个字典，Key是数据库字段名，Value是字段的值，可以通过属性访问字典的Key
+TableQueryer对象
+通过Connection对象创建
+有两种方式：
+1: db.tablename #获取tablename这个表的TableQueryer对象
+2: db.fromQuery(q) #通过已经存在的查询获取一个TableQueryer对象，实现子查询
+用途：
+1：获取字段条件对象 （conds对象）
+例子：t=db.tablename
+t.col1
+2：获取查询的执行对象 （Operater对象）
+例子：t=db.tablename
+q=t(t.col1>5) #需要加入查询条件来创建
+方法：
+名称：get_one
+参数：conds对象
+返回值：Row对象
+用途：获取表中单条记录
+例子：user=db.user.get_one(db.user.id==5)
+名称：insert
+参数：**dict(字段名=值)
+返回值：是否成功
+用途：插入记录到该表
+例子：db.tablename.insert(col1=123,col2=’abc’)
+Operater对象
+通过调用TableQueryer对象创建
+属性：
+select:返回Select对象
+update:返回Update对象
+delete:返回Delete对象
+insert:返回Insert对象
+Select对象
+生成select的sql，收集参数，并执行返回多行结果集
+方法：
+名称：group_by
+参数：*conds对象
+返回值：Select对象
+用途：加入group by操作的设定
+例子：q=db.tablename(db.tablename.col1>5)
+q.select.group_by(db.tablename.age)
+sql:select * from tablename where col1>5 group by age
+名称：having
+参数：conds对象
+返回值：Select对象
+用途：加入having设定
+例子：q=db.tablename(db.tablename.col1>5)
+q.select.group_by(db.tablename.age).having(db.tablename.col2.count>6)
+sql:select * from tablename where col1>5 group by age having count(col2)>6
+备注：必须在调用了group_by的前提下才能调用having，否则having条件不生效
+名称：collect
+参数：*conds
+返回值：Select对象
+用途：设定要筛选出的字段
+例子：q=db.tablename(db.tablename.col1>5)
+q.select.collect(db.tablename.col1,db.tablename.col12)
+sql:select col1,col2 from tablename where col1>5
+名称：limit
+参数：start,count
+返回值：Select对象
+用途：设定limit参数
+例子：q=db.tablename(db.tablename.col1>5)
+q.select.collect(db.tablename.col1,db.tablename.col12).limit(10,10)
+sql:select col1,col2 from tablename where col1>5 limit 10,10
+名称：get_sql
+参数：无
+返回值：生成的sql语句
+用途：返回生成的sql语句
+分页：
+对Select对象切片操作即可设定分页参数
+比如：q=db.tablename(db.tablename.col1>5)
+q.select.collect(db.tablename.col1,db.tablename.col12)[2:10]
+则是设定，页大小是10条记录，取地2页
+执行sql：
+直接执行Select对象
+比如：q=db.tablename(db.tablename.col1>5)
+s=q.select.collect(db.tablename.col1,db.tablename.col12)[2:10]
+rs=s()
+Update对象：
+用于生成Update语句更新记录
+例子：
+q=db.tablename(db.tablename.col1>5)
+q.update(db.tablename.col3==db.tablename.col3+5)
+sql:update tablename set col3=col3+5 where col1>5
+Delete对象
+用于生成Delete语句
+例子：
+q=db.tablename(db.tablename.col1>5)
+q.delete()
+sql:delete from tablename where col1>5
+Insert对象
+用于生成insert语句
+例子：
+q=db.tablename(db.tablename.col1>5)
+q.insert(col1=1,col2=’abc’)
+conds对象
+字段定义以及字段关系条件的定义对象
+通过TableQueryer对象的属性获取新的对象
+比如： t=db.tablename
+t.col1
+操作符：
+==:赋值或者相等比较，比如 t.col1==5 生成sql col=%s 且在参数列表中加入值5
+>：生成sql col>%s
+<：生成sql col<%s
+>=:生成sql col>=%s
+<=:生成sql col<=%s
+!=:生成sql col<>%s
+&：将两个条件取and关系，比如 (t.col1==5)&(t.col2<20) 生成sql col1=%s and col2<%s
+|：将两个条件取or关系
+方法：
+名称：like
+参数：任意对象
+返回值：conds对象
+用途：生成sql col like %s
+名称：In
+参数：列表或者Select对象
+返回值：conds对象
+用途：生成IN 语句
+名称：Not_In
+参数：列表或者Select对象
+返回值：conds对象
+用途：生成IN 语句
+名称：DL
+参数：格式化字符串,时间值
+返回值：conds对象
+用途：时间字段大于等于给定值
+例子：t.col1.DL('%%Y-%%m-%%d','2010-10-20')
+SQL: DATE_FORMAT(col1,'%%Y-%%m-%%d')>=%s
+名称：DG
+参数：格式化字符串,时间值
+返回值：conds对象
+用途：时间字段小于等于给定值
+例子：t.col1.DG(‘%%Y-%%m-%%d’,’2010-10-20′)
+SQL: DATE_FORMAT(col1,’%%Y-%%m-%%d’)<=%s
+名称：DE
+参数：格式化字符串,时间值
+返回值：conds对象
+用途：时间字段等于给定值
+例子：t.col1.DE('%%Y-%%m-%%d','2010-10-20')
+SQL: DATE_FORMAT(col1,'%%Y-%%m-%%d')=%s
