@@ -200,7 +200,7 @@ class Connection(object):
 
     def _execute(self, cursor, query, parameters):
         try:
-            return cursor.execute(query, parameters)
+            return cursor.execute(MySQLdb.escape_string(query), parameters)
         except OperationalError:
             logging.error("Error connecting to MySQL on %s", self.host)
             self.close()
